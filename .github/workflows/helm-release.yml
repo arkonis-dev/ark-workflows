@@ -1,0 +1,64 @@
+name: Helm Release
+
+on:
+  workflow_call:
+    inputs:
+      charts-path:
+        description: Path to charts directory
+        type: string
+        default: charts
+      pages-url:
+        description: GitHub Pages base URL for the Helm repo index
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Package and publish Helm charts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push to gh-pages branch
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Helm
+        env:
+          HELM_VERSION: v3.17.2
+        run: |
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
+          helm version
+
+      - name: Package charts
+        run: |
+          mkdir -p /tmp/helm-packages
+          for chart in ${{ inputs.charts-path }}/*/; do
+            echo "── packaging: $chart"
+            helm package "$chart" --destination /tmp/helm-packages
+          done
+
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Update repo index
+        run: |
+          cp /tmp/helm-packages/*.tgz gh-pages/
+          helm repo index gh-pages \
+            --url "${{ inputs.pages-url }}" \
+            --merge gh-pages/index.yaml
+
+      - name: Push to gh-pages
+        run: |
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git diff --staged --quiet && echo "nothing to commit" && exit 0
+          git commit -m "chore: release charts for ${{ github.ref_name }}"
+          git push

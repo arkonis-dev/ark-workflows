@@ -1,0 +1,60 @@
+name: Go CI
+
+on:
+  workflow_call:
+    inputs:
+      go-version-file:
+        description: Path to go.mod used to select Go version
+        type: string
+        default: go.mod
+      test-command:
+        description: Command to run tests
+        type: string
+        default: go test ./...
+      lint-command:
+        description: Command to run linter (empty = skip lint)
+        type: string
+        default: ""
+      working-directory:
+        description: Working directory for all steps
+        type: string
+        default: .
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6.3.0
+        with:
+          go-version-file: ${{ inputs.working-directory != '.' && format('{0}/{1}', inputs.working-directory, inputs.go-version-file) || inputs.go-version-file }}
+          cache-dependency-path: ${{ inputs.working-directory != '.' && format('{0}/go.sum', inputs.working-directory) || 'go.sum' }}
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    if: inputs.lint-command != ''
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6.3.0
+        with:
+          go-version-file: ${{ inputs.working-directory != '.' && format('{0}/{1}', inputs.working-directory, inputs.go-version-file) || inputs.go-version-file }}
+          cache-dependency-path: ${{ inputs.working-directory != '.' && format('{0}/go.sum', inputs.working-directory) || 'go.sum' }}
+
+      - name: Run linter
+        run: ${{ inputs.lint-command }}

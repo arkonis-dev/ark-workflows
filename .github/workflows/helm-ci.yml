@@ -1,0 +1,51 @@
+name: Helm CI
+
+on:
+  workflow_call:
+    inputs:
+      charts-path:
+        description: Path to charts directory
+        type: string
+        default: charts
+
+jobs:
+  lint:
+    name: Helm Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Helm
+        env:
+          HELM_VERSION: v3.17.2
+        run: |
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
+          helm version
+
+      - name: Lint charts
+        run: |
+          FAIL=0
+          for chart in ${{ inputs.charts-path }}/*/; do
+            echo "── lint: $chart"
+            helm lint "$chart" || FAIL=$((FAIL+1))
+          done
+          [ $FAIL -eq 0 ]
+
+      - name: Verify Chart.yaml versions are bumped on PR
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main --depth=1
+          FAIL=0
+          for chart in ${{ inputs.charts-path }}/*/; do
+            name=$(basename "$chart")
+            OLD=$(git show origin/main:"$chart/Chart.yaml" 2>/dev/null | grep '^version:' | awk '{print $2}' || echo "")
+            NEW=$(grep '^version:' "$chart/Chart.yaml" | awk '{print $2}')
+            if [ -n "$OLD" ] && [ "$OLD" = "$NEW" ]; then
+              echo "✗ $name: Chart.yaml version not bumped (still $OLD)"
+              FAIL=$((FAIL+1))
+            else
+              echo "✓ $name: $OLD → $NEW"
+            fi
+          done
+          [ $FAIL -eq 0 ]

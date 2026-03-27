@@ -1,0 +1,9 @@
+# Local environment / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Claude Code AI assistant local settings
+.claude/

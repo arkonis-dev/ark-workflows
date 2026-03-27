@@ -1,0 +1,66 @@
+name: Scan Image
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Full image reference to scan (e.g. ghcr.io/arkonis-dev/ark:0.1.0)
+        required: true
+        type: string
+      sarif-category:
+        description: Category label for the SARIF upload (must be unique per image in the same workflow run)
+        required: true
+        type: string
+      fail-on-severity:
+        description: Minimum severity that causes a non-zero exit (critical, high, medium, low, negligible)
+        type: string
+        default: high
+    secrets:
+      GHCR_TOKEN:
+        required: false
+
+env:
+  GRYPE_VERSION: v0.110.0
+
+jobs:
+  scan:
+    name: Scan ${{ inputs.sarif-category }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+      security-events: write # upload SARIF to GitHub Security tab
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install grype
+        run: |
+          curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin ${{ env.GRYPE_VERSION }}
+          grype version
+
+      - name: Scan image
+        run: |
+          set +e
+          grype "${{ inputs.image }}" \
+            --fail-on "${{ inputs.fail-on-severity }}" \
+            --output sarif \
+            --file scan.sarif
+          echo "GRYPE_EXIT=$?" >> "$GITHUB_ENV"
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4.34.1
+        with:
+          sarif_file: scan.sarif
+          category: ${{ inputs.sarif-category }}
+
+      - name: Enforce severity threshold
+        if: always()
+        run: exit "$GRYPE_EXIT"

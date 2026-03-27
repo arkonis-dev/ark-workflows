@@ -1,0 +1,130 @@
+name: Go Binary Release
+
+on:
+  workflow_call:
+    inputs:
+      binary-name:
+        description: Output binary name (e.g. ark)
+        required: true
+        type: string
+      main-package:
+        description: Go package path to build (e.g. ./cmd/ark)
+        required: true
+        type: string
+      version-var:
+        description: "Linker variable for version injection (e.g. main.version) - empty = skip"
+        type: string
+        default: main.version
+      release-notes:
+        description: Release body text (markdown). Defaults to git log since last tag.
+        type: string
+        default: ""
+
+# Builds for all 5 targets in parallel, then creates a single GitHub release.
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          LDFLAGS="-s -w"
+          if [ -n "${{ inputs.version-var }}" ]; then
+            LDFLAGS="$LDFLAGS -X ${{ inputs.version-var }}=${VERSION}"
+          fi
+          go build \
+            -ldflags="$LDFLAGS" \
+            -o "dist/${{ inputs.binary-name }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext || '' }}" \
+            ${{ inputs.main-package }}
+
+      - name: Generate checksum
+        run: |
+          cd dist
+          sha256sum ${{ inputs.binary-name }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext || '' }} \
+            > ${{ inputs.binary-name }}-${{ matrix.goos }}-${{ matrix.goarch }}.sha256
+
+      - uses: actions/upload-artifact@v7.0.0
+        with:
+          name: ${{ inputs.binary-name }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: ${{ inputs.binary-name }}-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Generate changelog
+        id: notes
+        env:
+          RELEASE_NOTES: ${{ inputs.release-notes }}
+        run: |
+          if [ -n "$RELEASE_NOTES" ]; then
+            {
+              echo "body<<EOF"
+              echo "$RELEASE_NOTES"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            if [ -n "$PREV" ]; then
+              BODY=$(git log --pretty=format:"- %s (%h)" "${PREV}..HEAD")
+            else
+              BODY=$(git log --pretty=format:"- %s (%h)")
+            fi
+            {
+              echo "body<<EOF"
+              echo "$BODY"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: ${{ steps.notes.outputs.body }}
+        run: |
+          echo "$NOTES" > /tmp/release-notes.md
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ github.ref_name }}" \
+            --notes-file /tmp/release-notes.md \
+            dist/${{ inputs.binary-name }}-*
