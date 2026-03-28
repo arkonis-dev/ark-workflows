@@ -1,0 +1,76 @@
+name: Docs Sync
+
+on:
+  workflow_call:
+    inputs:
+      source-repo:
+        description: 'Repo containing the Go types (e.g. arkonis-dev/ark)'
+        required: true
+        type: string
+      source-sha:
+        description: 'Commit SHA that triggered the sync'
+        required: false
+        type: string
+        default: ''
+      docs-path:
+        description: 'Output path for generated api.md relative to ark-docs root'
+        required: false
+        type: string
+        default: 'docs/reference/api.md'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source-repo }}
+          path: _source
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: _source/go.mod
+          cache-dependency-path: _source/go.sum
+
+      - name: Install crd-ref-docs
+        run: cd _source && make crd-ref-docs
+
+      - name: Generate API reference
+        run: cd _source && DOCS_PATH=../${{ inputs.docs-path }} make docs-api
+
+      - name: Get source HEAD sha
+        id: sha
+        run: |
+          ref="${{ inputs.source-sha }}"
+          echo "sha=${ref:-$(git -C _source rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
+
+      - name: Open PR if changed
+        run: |
+          if git diff --quiet; then
+            echo "No changes, skipping PR."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="auto/sync-api-ref"
+          git checkout -B "$BRANCH"
+          git add ${{ inputs.docs-path }}
+          git commit -m "docs: sync API reference from ${{ inputs.source-repo }}@${{ steps.sha.outputs.sha }}"
+          git push origin "$BRANCH" --force
+          gh pr create \
+            --title "docs: sync API reference" \
+            --body "Auto-generated from [${{ inputs.source-repo }}](https://github.com/${{ inputs.source-repo }}) Go types. Commit: ${{ steps.sha.outputs.sha }}" \
+            --base main \
+            --head "$BRANCH" \
+            --label "automated,documentation" 2>/dev/null || echo "PR already open, branch updated."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

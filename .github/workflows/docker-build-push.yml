@@ -35,6 +35,10 @@ on:
         description: Suffix appended to the version tag (e.g. -runtime)
         type: string
         default: ""
+      build-args:
+        description: "Newline-separated Docker build-arg values (e.g. VERSION=1.2.3)"
+        type: string
+        default: ""
     outputs:
       image-tag:
         description: The version tag that was pushed (e.g. 0.1.0)
@@ -97,6 +101,7 @@ jobs:
           push: false
           load: true
           tags: ${{ env.SCAN_IMAGE }}
+          build-args: ${{ inputs.build-args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -122,5 +127,6 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.tag.outputs.version }}
+          build-args: ${{ inputs.build-args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

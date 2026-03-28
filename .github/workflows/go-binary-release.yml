@@ -11,8 +11,8 @@ on:
         description: Go package path to build (e.g. ./cmd/ark)
         required: true
         type: string
-      version-var:
-        description: "Linker variable for version injection (e.g. main.version) - empty = skip"
+      version-vars:
+        description: "Space-separated linker variables to inject the release version (e.g. 'main.version' or 'main.arkVersion main.dashboardVersion') - empty = skip"
         type: string
         default: main.version
       release-notes:
@@ -56,9 +56,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w"
-          if [ -n "${{ inputs.version-var }}" ]; then
-            LDFLAGS="$LDFLAGS -X ${{ inputs.version-var }}=${VERSION}"
-          fi
+          for VAR in ${{ inputs.version-vars }}; do
+            LDFLAGS="$LDFLAGS -X ${VAR}=${VERSION}"
+          done
           go build \
             -ldflags="$LDFLAGS" \
             -o "dist/${{ inputs.binary-name }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext || '' }}" \

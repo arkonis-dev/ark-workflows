@@ -1,0 +1,33 @@
+name: Docs Lint
+
+on:
+  workflow_call:
+    inputs:
+      docs-path:
+        description: 'Directory to lint'
+        required: false
+        type: string
+        default: 'docs/'
+      min-alert-level:
+        description: 'Minimum alert level: suggestion, warning, or error'
+        required: false
+        type: string
+        default: 'warning'
+
+jobs:
+  vale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vale
+        run: |
+          curl -sL https://github.com/errata-ai/vale/releases/latest/download/vale_Linux_64-bit.tar.gz | tar -xz vale
+          sudo mv vale /usr/local/bin/
+
+      - name: Sync Vale packages
+        run: vale sync
+
+      - name: Run Vale
+        run: vale --minAlertLevel=${{ inputs.min-alert-level }} ${{ inputs.docs-path }}
