@@ -1,0 +1,82 @@
+name: Helm Sync Dashboard Version
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: New dashboard version without v prefix. Leave empty to fetch latest from source-repo.
+        required: false
+        type: string
+        default: ''
+      source-repo:
+        description: GitHub repo to fetch latest release from when version is empty (e.g. arkonis-dev/ark-dashboard)
+        required: false
+        type: string
+        default: arkonis-dev/ark-dashboard
+      charts-path:
+        description: Path to the charts directory
+        type: string
+        default: charts
+      chart-name:
+        description: Name of the chart directory under charts-path
+        type: string
+        default: ark
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve version
+        id: upstream
+        run: |
+          NEW="${{ inputs.version }}"
+          if [ -z "$NEW" ]; then
+            NEW=$(curl -sf https://api.github.com/repos/${{ inputs.source-repo }}/releases/latest \
+              | jq -r '.tag_name' | sed 's/^v//')
+          fi
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+
+      - name: Check current dashboard version
+        id: current
+        run: |
+          VALUES=${{ inputs.charts-path }}/${{ inputs.chart-name }}/values.yaml
+          CURRENT=$(grep 'ark-dashboard:' "$VALUES" | sed 's|.*ark-dashboard:||' | tr -d ' ')
+          echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if already up to date
+        if: steps.upstream.outputs.version == steps.current.outputs.version
+        run: echo "Dashboard already at ${{ steps.current.outputs.version }}, nothing to do."
+
+      - name: Bump dashboard image
+        if: steps.upstream.outputs.version != steps.current.outputs.version
+        env:
+          NEW: ${{ steps.upstream.outputs.version }}
+        run: |
+          VALUES=${{ inputs.charts-path }}/${{ inputs.chart-name }}/values.yaml
+          sed -i "s|ark-dashboard:[^ ]*|ark-dashboard:${NEW}|" "$VALUES"
+
+      - name: Push branch and open PR
+        if: steps.upstream.outputs.version != steps.current.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW: ${{ steps.upstream.outputs.version }}
+        run: |
+          BRANCH="chore/bump-dashboard-${NEW}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add ${{ inputs.charts-path }}/${{ inputs.chart-name }}/values.yaml
+          git commit -m "bump: dashboard image to ${NEW}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: bump ark-dashboard to ${NEW}" \
+            --body "Automated version sync: dashboard.image → \`${NEW}\`" \
+            --head "$BRANCH" \
+            --base main \
+            --label "automated" 2>/dev/null || echo "PR already open, branch updated."
