@@ -42,19 +42,22 @@ jobs:
           fi
           echo "version=${NEW}" >> "$GITHUB_OUTPUT"
 
-      - name: Check current appVersion
+      - name: Check current versions
         id: current
         run: |
           CHART=${{ inputs.charts-path }}/${{ inputs.chart-name }}/Chart.yaml
-          CURRENT=$(grep '^appVersion:' "$CHART" | awk '{print $2}' | tr -d '"')
-          echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
+          VALUES=${{ inputs.charts-path }}/${{ inputs.chart-name }}/values.yaml
+          APP=$(grep '^appVersion:' "$CHART" | awk '{print $2}' | tr -d '"')
+          AGENT=$(grep 'ark-worker:' "$VALUES" | sed 's|.*ark-worker:||' | tr -d ' ')
+          echo "appVersion=${APP}" >> "$GITHUB_OUTPUT"
+          echo "agentImage=${AGENT}" >> "$GITHUB_OUTPUT"
 
       - name: Skip if already up to date
-        if: steps.upstream.outputs.version == steps.current.outputs.version
-        run: echo "Chart already at ${{ steps.current.outputs.version }}, nothing to do."
+        if: steps.upstream.outputs.version == steps.current.outputs.appVersion && steps.upstream.outputs.version == steps.current.outputs.agentImage
+        run: echo "Chart already at ${{ steps.current.outputs.appVersion }}, nothing to do."
 
       - name: Bump versions
-        if: steps.upstream.outputs.version != steps.current.outputs.version
+        if: steps.upstream.outputs.version != steps.current.outputs.appVersion || steps.upstream.outputs.version != steps.current.outputs.agentImage
         env:
           NEW: ${{ steps.upstream.outputs.version }}
         run: |
@@ -72,7 +75,7 @@ jobs:
           sed -i "s|ark-worker:[^ ]*|ark-worker:${NEW}|" "$VALUES"
 
       - name: Push branch and open PR
-        if: steps.upstream.outputs.version != steps.current.outputs.version
+        if: steps.upstream.outputs.version != steps.current.outputs.appVersion || steps.upstream.outputs.version != steps.current.outputs.agentImage
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEW: ${{ steps.upstream.outputs.version }}
