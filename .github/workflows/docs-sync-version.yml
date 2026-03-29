@@ -7,7 +7,7 @@ on:
         description: New version without v prefix (e.g. 0.3.1). Leave empty to fetch from arkonis-dev/ark.
         required: false
         type: string
-        default: ''
+        default: ""
 
 jobs:
   sync:
@@ -19,9 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6.3.0
         with:
-          node-version: '20'
+          node-version: "20"
           cache: npm
 
       - name: Install dependencies
