@@ -1,0 +1,58 @@
+name: Docs Version
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version tag to freeze (e.g. v0.3.0)'
+        required: true
+        type: string
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Freeze docs version
+        run: npx docusaurus docs:version ${{ inputs.version }}
+
+      - name: Update docusaurus.config.ts
+        run: |
+          VERSION="${{ inputs.version }}"
+          # Set lastVersion to the new frozen version
+          sed -i "s/lastVersion: 'current'/lastVersion: '${VERSION}'/" docusaurus.config.ts
+          # Set current label to 'next'
+          sed -i "s/label: '${VERSION}'/label: 'next'/" docusaurus.config.ts
+          # Add new version entry after the current block
+          sed -i "s|path: '/',|path: '/',\n            },\n            '${VERSION}': {\n              label: '${VERSION}',\n              path: '/',|" docusaurus.config.ts
+
+      - name: Open PR
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="auto/version-${{ inputs.version }}"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "docs: freeze version ${{ inputs.version }}"
+          git push origin "$BRANCH" --force
+          gh pr create \
+            --title "docs: freeze version ${{ inputs.version }}" \
+            --body "Automated version freeze triggered by release \`${{ inputs.version }}\` in the ark repo. Review and merge to publish versioned docs." \
+            --base main \
+            --head "$BRANCH" \
+            --label "automated,docs" 2>/dev/null || echo "PR already open, branch updated."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
