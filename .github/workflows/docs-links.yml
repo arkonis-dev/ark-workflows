@@ -4,10 +4,10 @@ on:
   workflow_call:
     inputs:
       docs-path:
-        description: 'Glob pattern for files to check'
+        description: "Glob pattern for files to check"
         required: false
         type: string
-        default: './docs/**/*.md'
+        default: "./docs/**/*.md"
 
 jobs:
   lychee:

@@ -4,15 +4,15 @@ on:
   workflow_call:
     inputs:
       docs-path:
-        description: 'Directory to lint'
+        description: "Directory to lint"
         required: false
         type: string
-        default: 'docs/'
+        default: "docs/"
       min-alert-level:
-        description: 'Minimum alert level: suggestion, warning, or error'
+        description: "Minimum alert level: suggestion, warning, or error"
         required: false
         type: string
-        default: 'warning'
+        default: "warning"
 
 jobs:
   vale:

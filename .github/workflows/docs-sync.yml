@@ -4,19 +4,19 @@ on:
   workflow_call:
     inputs:
       source-repo:
-        description: 'Repo containing the Go types (e.g. arkonis-dev/ark)'
+        description: "Repo containing the Go types (e.g. arkonis-dev/ark)"
         required: true
         type: string
       source-sha:
-        description: 'Commit SHA that triggered the sync'
+        description: "Commit SHA that triggered the sync"
         required: false
         type: string
-        default: ''
+        default: ""
       docs-path:
-        description: 'Output path for generated api.md relative to ark-docs root'
+        description: "Output path for generated api.md relative to ark-docs root"
         required: false
         type: string
-        default: 'docs/reference/api.md'
+        default: "docs/reference/api.md"
 
 jobs:
   sync:

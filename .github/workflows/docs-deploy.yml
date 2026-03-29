@@ -4,9 +4,9 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: 'Node.js version'
+        description: "Node.js version"
         type: string
-        default: '20'
+        default: "20"
 
 jobs:
   deploy:
