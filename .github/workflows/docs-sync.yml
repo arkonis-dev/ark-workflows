@@ -27,16 +27,16 @@ jobs:
 
     steps:
       - name: Checkout docs repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout source repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.source-repo }}
           path: _source
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6.3.0
         with:
           go-version-file: _source/go.mod
           cache-dependency-path: _source/go.sum
@@ -71,6 +71,6 @@ jobs:
             --body "Auto-generated from [${{ inputs.source-repo }}](https://github.com/${{ inputs.source-repo }}) Go types. Commit: ${{ steps.sha.outputs.sha }}" \
             --base main \
             --head "$BRANCH" \
-            --label "automated,documentation" 2>/dev/null || echo "PR already open, branch updated."
+            --label "automated,docs" 2>/dev/null || echo "PR already open, branch updated."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
