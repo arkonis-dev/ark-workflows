@@ -62,3 +62,12 @@ jobs:
           git diff --staged --quiet && echo "nothing to commit" && exit 0
           git commit -m "chore: release charts for ${{ github.ref_name }}"
           git push
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ github.ref_name }}" \
+            --generate-notes \
+            /tmp/helm-packages/*.tgz

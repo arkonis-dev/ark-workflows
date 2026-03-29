@@ -17,6 +17,7 @@ Full documentation at **[docs.arkonis.dev](https://docs.arkonis.dev)**.
 | [`helm-release.yml`](.github/workflows/helm-release.yml)           | Package Helm charts and publish to GitHub Pages             |
 | [`helm-sync-operator.yml`](.github/workflows/helm-sync-operator.yml) | Bump appVersion, chart version, and agentImage in a Helm chart |
 | [`helm-sync-dashboard.yml`](.github/workflows/helm-sync-dashboard.yml) | Bump dashboard.image tag in a Helm chart                   |
+| [`docs-sync-version.yml`](.github/workflows/docs-sync-version.yml) | Update docs version label; freeze previous minor on minor releases |
 | [`scan-image.yml`](.github/workflows/scan-image.yml)               | Grype CVE scan + SARIF upload to GitHub Security tab        |
 | [`scan-secrets.yml`](.github/workflows/scan-secrets.yml)           | TruffleHog secret scan across full git history (Apache 2.0) |
 

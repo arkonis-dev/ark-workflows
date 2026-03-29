@@ -1,0 +1,106 @@
+name: Docs Sync Version
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: New version without v prefix (e.g. 0.3.1). Leave empty to fetch from arkonis-dev/ark.
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve version
+        id: ver
+        run: |
+          NEW="${{ inputs.version }}"
+          if [ -z "$NEW" ]; then
+            NEW=$(curl -sf https://api.github.com/repos/arkonis-dev/ark/releases/latest \
+              | jq -r '.tag_name' | sed 's/^v//')
+          fi
+          MAJOR=$(echo "$NEW" | cut -d. -f1)
+          MINOR=$(echo "$NEW" | cut -d. -f2)
+          PATCH=$(echo "$NEW" | cut -d. -f3)
+          PREV_MINOR=$((MINOR - 1))
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
+          echo "patch=${PATCH}" >> "$GITHUB_OUTPUT"
+          echo "label=v${MAJOR}.${MINOR}.x" >> "$GITHUB_OUTPUT"
+          echo "freeze_as=v${MAJOR}.${PREV_MINOR}" >> "$GITHUB_OUTPUT"
+          echo "is_minor_bump=$([ "$PATCH" = "0" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Freeze previous minor docs
+        if: steps.ver.outputs.is_minor_bump == 'true' && steps.ver.outputs.minor != '0'
+        run: npx docusaurus docs:version ${{ steps.ver.outputs.freeze_as }}
+
+      - name: Update docusaurus.config.ts
+        env:
+          LABEL: ${{ steps.ver.outputs.label }}
+          FREEZE: ${{ steps.ver.outputs.freeze_as }}
+          IS_MINOR: ${{ steps.ver.outputs.is_minor_bump }}
+          MINOR: ${{ steps.ver.outputs.minor }}
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const label = process.env.LABEL;
+          const freeze = process.env.FREEZE;
+          const isMinor = process.env.IS_MINOR === 'true';
+          const minor = parseInt(process.env.MINOR);
+
+          let config = fs.readFileSync('docusaurus.config.ts', 'utf8');
+
+          // Always update the current label
+          config = config.replace(/label: 'v\d+\.\d+[^']*'/, `label: '${label}'`);
+
+          // On minor bump (and not the very first minor), add frozen version entry
+          if (isMinor && minor > 0 && !config.includes(`'${freeze}'`)) {
+            const entry = `\n            '${freeze}': {\n              label: '${freeze}',\n              path: '/${freeze}',\n            },`;
+            config = config.replace(/(current: \{[^}]+\},)/, `$1${entry}`);
+          }
+
+          fs.writeFileSync('docusaurus.config.ts', config);
+          EOF
+
+      - name: Open PR if changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABEL: ${{ steps.ver.outputs.label }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          if git diff --quiet && git status --short | grep -q '^??'; then
+            : # untracked versioned_docs - fall through
+          elif git diff --quiet; then
+            echo "Already at ${LABEL}, nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="chore/docs-version-${VERSION}"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "chore: sync docs version to ${LABEL}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: sync docs version to ${LABEL}" \
+            --body "Automated docs version sync triggered by ark release \`v${VERSION}\`." \
+            --head "$BRANCH" \
+            --base main \
+            --label "automated" 2>/dev/null || echo "PR already open, branch updated."
